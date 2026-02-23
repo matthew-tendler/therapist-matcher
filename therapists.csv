@@ -1,0 +1,22 @@
+therapist,min_age,conditions,approaches,exclusions,emdr,modality,in_person_days,location,availability_status,notes,last_updated,updated_by,str8_med,medicare,fidelis,healthfirst,nwd,bcbs,cigna,optum,aetna,eleven99
+"Allison Graver, LMHC-D*",16,"OCD, anxiety, depression","CBT, DBT, ERP",,yes,Telehealth,,,available,,,,yes,yes,yes,yes,yes,yes,yes,yes,yes,yes
+"Amanda Mosher, LMHC*",14,trauma,"CBT, DBT","family, couples",no,Hybrid,"Mon,Wed,Fri",Commack,available,,,,yes,,yes,,yes,,,,,
+"Alyssa Sceppaguercio, LMHC-D*",18,"dissociation, athletes, LGBTQ+, trauma",EMDR,,yes,Telehealth,,,available,,,,yes,,yes,,,,,,,
+"Angela Paz, LMHC",18,"SU, anxiety, depression",,CPS,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Commack,not_taking,,,,yes,,yes,yes,yes,yes,,yes,yes,yes
+"Caroline O'Connell, LMHC",17,"trauma, addiction",,couples,no,Telehealth,,,available,,,,yes,,,yes,yes,,,,,
+"Christopher Scarallo, LMHC*",17,"ADHD, anxiety, depression",,couples,no,In-Person,"Mon,Tue,Wed,Thu,Fri","Commack, Jericho",available,,,,yes,yes,yes,yes,yes,,,,,
+"Cristina Porchetta, LMHC*",18,"anxiety, trauma",EMDR,,yes,Hybrid,"Tue,Thu",Jericho,available,,,,yes,,,yes,yes,yes,yes,yes,yes,yes
+"Danielle Denenberg, LMHC",13,"LGBTQ+, OCD",,SU,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Commack,available,,,,yes,,,,,,,,,
+"Denise DeMattia, LMHC-D*",16,,EMDR,,yes,Telehealth,,,available,EMDR clients ONLY,,,yes,,yes,,,,,,,
+"Emily Ly, LMHC",16,"anxiety, depression, trauma, relationships, self-esteem",,couples,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Commack,available,,,,yes,,,yes,,yes,,,yes,
+"Ian Mealie, LMHC",18,"anxiety, depression, SU, trauma",CBT,,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Commack,available,,,,yes,,,yes,yes,,,,,
+"Jacqueline Moon, LMHC-D*",18,"self-esteem, trauma, anxiety, OCD",EMDR,,yes,Telehealth,,,available,,,,yes,,yes,,yes,yes,yes,yes,yes,
+"Jennifer Davidson, LMHC",18,"anxiety, depression",,,no,Telehealth,,,available,Older therapist if clients prefer that,,,yes,,,,yes,,,,,
+"Joseph DeNoyior, LMHC",13,"OCD, anxiety, depression, grief",ERP,,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Ronkonkoma,full,,,,yes,,yes,yes,yes,,,,,
+"Joylin Santos, LMHC*",18,"trauma, BPD, Bipolar","CBT, DBT, Somatic",Schizophrenia,no,Telehealth,,,available,,,,yes,yes,,,yes,yes,yes,yes,yes,
+"Kenneth Carroll, LMHC-D*",11,"LGBTQ+, BPD, couples","CBT, DBT",,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Commack,available,Accepts severe presentations,,,yes,yes,,yes,yes,yes,yes,yes,,
+"Michael McLarnon, LMHC*",16,OCD,"CBT, DBT",,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Commack,available,,,,yes,,yes,yes,yes,yes,yes,yes,,
+"Nicole DeAngelis, LMHC",18,"depression, anxiety, LGBTQ+, Autism, trauma",,,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Ronkonkoma,available,,,,yes,,,yes,yes,,,,,
+"Qiuling (Shirley) Ren, LMHC*",11,"anxiety, depression, grief, trauma","CBT, DBT",,no,In-Person,"Mon,Tue,Wed,Thu,Fri",Jericho,available,Bilingual: Chinese/Mandarin,,,yes,,,yes,yes,,,,,
+"Robert Popp, LMHC",18,,,"OCD, ASD, eating disorders, severe",no,In-Person,"Mon,Tue,Wed,Thu,Fri","Commack, Jericho",not_taking,NOTHING SEVERE,,,yes,,yes,yes,yes,yes,yes,yes,yes,yes
+"Tara Massetti, LMHC-D*",14,,"EMDR, CBT, Somatic",OCD,yes,Hybrid,"Mon,Wed",Commack,available,,,,yes,yes,,,yes,,,,,
