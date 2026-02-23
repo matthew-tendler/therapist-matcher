@@ -60,6 +60,14 @@ WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 ALL_TIMES = ["9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM",
              "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM"]
 
+# Time-of-day ranges for preferred schedule filter
+# Morning: 9:00 AM – 11:59 AM  |  Afternoon: 12:00 PM – 4:59 PM  |  Evening: 5:00 PM+
+TIME_OF_DAY_RANGES = {
+    "Morning": ["9:00 AM", "10:00 AM", "11:00 AM"],
+    "Afternoon": ["12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM"],
+    "Evening": ["5:00 PM"],
+}
+
 KEYWORD_ALIASES = {
     "anxiety": ["anxiety", "anx", "anxious", "worry", "panic"],
     "depression": ["depression", "dep", "depressed", "depressive"],
@@ -136,6 +144,14 @@ def get_all_stub_slots(row: dict) -> dict:
         if slots:
             result[day] = (day_modality, slots)
     return result
+
+
+def filter_slots_by_time_of_day(slots: list, preferred_time: str) -> list:
+    """Filter slots to only those in the preferred time range. Returns [] if preferred_time is Any."""
+    if not preferred_time or preferred_time == "Any":
+        return slots
+    allowed = set(TIME_OF_DAY_RANGES.get(preferred_time, []))
+    return [s for s in slots if s in allowed]
 
 
 def get_week_dates(week_offset: int = 0) -> dict:
@@ -404,6 +420,35 @@ def filter_and_rank(df: pd.DataFrame, criteria: dict) -> tuple:
     return exact_df, near_df
 
 
+def _has_matching_slot(row_dict: dict, preferred_days: list, preferred_time: str) -> bool:
+    """Return True if therapist has at least one slot on preferred days in preferred time range."""
+    stub = get_all_stub_slots(row_dict)
+    days_to_check = preferred_days if preferred_days else list(stub.keys())
+    for day in days_to_check:
+        if day not in stub:
+            continue
+        _, slots = stub[day]
+        filtered = filter_slots_by_time_of_day(slots, preferred_time)
+        if filtered:
+            return True
+    return False
+
+
+def filter_by_preferred_schedule(exact_df: pd.DataFrame, near_df: pd.DataFrame, criteria: dict) -> tuple:
+    """Filter out therapists who have no availability on preferred days at preferred time."""
+    preferred_days = criteria.get("preferred_days", []) or []
+    preferred_time = criteria.get("preferred_time", "Any") or "Any"
+    if not preferred_days and preferred_time == "Any":
+        return exact_df, near_df
+
+    def keep(row):
+        return _has_matching_slot(row.to_dict(), preferred_days, preferred_time)
+
+    exact_filtered = exact_df[exact_df.apply(keep, axis=1)] if not exact_df.empty else exact_df
+    near_filtered = near_df[near_df.apply(keep, axis=1)] if not near_df.empty else near_df
+    return exact_filtered, near_filtered
+
+
 # ---------------------------------------------------------------------------
 # UI helpers
 # ---------------------------------------------------------------------------
@@ -451,16 +496,26 @@ def render_sidebar(defaults: dict = None) -> dict:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("#### Preferred Schedule")
-    st.sidebar.caption("Phase 2 — IntakeQ integration")
-    st.sidebar.multiselect(
+    st.sidebar.caption("Filter results by preferred days and time of day.")
+    preferred_days = st.sidebar.multiselect(
         "Preferred Days",
-        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-        disabled=True,
+        WEEKDAYS,
+        default=[],
+        format_func=lambda d: {"Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday",
+                               "Thu": "Thursday", "Fri": "Friday"}[d],
+        help="Leave empty to show all weekdays.",
     )
-    st.sidebar.selectbox(
-        "Preferred Time",
-        ["Any", "Morning (before 12pm)", "Afternoon (12-5pm)", "Evening (after 5pm)"],
-        disabled=True,
+    time_options = [
+        ("Any", "Any time"),
+        ("Morning", "Morning (9:00 AM – 11:59 AM)"),
+        ("Afternoon", "Afternoon (12:00 PM – 4:59 PM)"),
+        ("Evening", "Evening (5:00 PM onwards)"),
+    ]
+    preferred_time = st.sidebar.selectbox(
+        "Preferred Time of Day",
+        [o[0] for o in time_options],
+        format_func=lambda v: next((o[1] for o in time_options if o[0] == v), v),
+        help="Morning: 9–12  |  Afternoon: 12–5  |  Evening: 5pm+",
     )
 
     st.sidebar.markdown("---")
@@ -474,6 +529,8 @@ def render_sidebar(defaults: dict = None) -> dict:
         "modality": modality,
         "location": location,
         "hide_unavailable": hide_unavailable,
+        "preferred_days": preferred_days,
+        "preferred_time": preferred_time,
     }
 
 
@@ -513,7 +570,7 @@ def build_schedule_label(row: dict) -> str:
     return modality
 
 
-def render_therapist_card(row: dict, is_near_match: bool = False):
+def render_therapist_card(row: dict, is_near_match: bool = False, criteria: dict = None):
     status = row.get("availability_status", "available")
     if status == "permanently_closed":
         status = "not_taking"
@@ -527,6 +584,17 @@ def render_therapist_card(row: dict, is_near_match: bool = False):
     age_text = f" | Ages {row.get('min_age', 0)}+" if row.get("min_age", 0) > 0 else ""
 
     stub = get_all_stub_slots(row)
+    preferred_days = (criteria or {}).get("preferred_days", []) or []
+    preferred_time = (criteria or {}).get("preferred_time", "Any") or "Any"
+    if preferred_days or preferred_time != "Any":
+        filtered_stub = {}
+        for day, (mod, slots) in stub.items():
+            if preferred_days and day not in preferred_days:
+                continue
+            slots_f = filter_slots_by_time_of_day(slots, preferred_time)
+            if slots_f:
+                filtered_stub[day] = (mod, slots_f)
+        stub = filtered_stub
 
     with st.container(border=True):
         col_name, col_status = st.columns([3, 1])
@@ -590,12 +658,31 @@ def render_therapist_card(row: dict, is_near_match: bool = False):
                 st.warning(w, icon="⚠️")
 
 
-def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame):
+def _render_calendar_therapist_card(row_dict: dict, day_mod: str, slots: list, is_near: bool):
+    """Render a single therapist card in the calendar with clear exact vs near distinction."""
+    badge = MODALITY_BADGE.get(day_mod, "")
+    name = row_dict["therapist"].split(",")[0]
+    location = row_dict.get("location", "")
+    loc_str = f" · {location}" if location and day_mod == "In-Person" else ""
+    match_label = (
+        '<span style="color:#16a34a;font-weight:600;">✓ Exact match</span>'
+        if not is_near
+        else '<span style="color:#ca8a04;font-weight:600;">~ Near match</span>'
+    )
+    with st.container(border=True):
+        st.markdown(f"**{name}**")
+        st.markdown(match_label, unsafe_allow_html=True)
+        st.caption(f"{badge} {day_mod}{loc_str}")
+        st.caption("  ".join(f"`{s}`" for s in slots))
+
+
+def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame, criteria: dict):
     """
     Weekly calendar — 5 columns (Mon–Fri) with exact dates.
     Each column shows matched therapists available that date with modality + stub slots.
+    Exact matches shown with ✓ green label; near matches with ~ amber label.
     When multiple therapists are available on a date, users can drill into each therapist's times.
-    Filter criteria update which therapists appear; calendar reflects filtered results.
+    Preferred days/time filters from criteria affect what is shown.
     """
     all_matches = pd.concat([exact_df, near_df], ignore_index=True) if not near_df.empty else exact_df
 
@@ -603,9 +690,13 @@ def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame):
         st.info("No matches to display. Adjust filters in the sidebar.")
         return
 
+    preferred_days = criteria.get("preferred_days", []) or []
+    preferred_time = criteria.get("preferred_time", "Any") or "Any"
+    days_to_show = preferred_days if preferred_days else WEEKDAYS
+
     def week_label(i):
         wd = get_week_dates(i)
-        mon_date = wd["Mon"][1]  # e.g. "Feb 24"
+        mon_date = wd["Mon"][1]
         if i == 0:
             return f"This week (starting {mon_date})"
         if i == 1:
@@ -621,17 +712,29 @@ def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame):
     week_dates = get_week_dates(week_idx)
 
     st.caption("Open slots are stub data — Phase 2 will pull live from IntakeQ.")
+    st.caption(
+        '<span style="color:#16a34a;font-weight:600;">✓ Exact match</span> = matches all criteria  ·  '
+        '<span style="color:#ca8a04;font-weight:600;">~ Near match</span> = matches most criteria',
+        unsafe_allow_html=True,
+    )
+    if preferred_days or preferred_time != "Any":
+        filter_msg = []
+        if preferred_days:
+            filter_msg.append(f"Days: {', '.join(preferred_days)}")
+        if preferred_time != "Any":
+            ranges = {"Morning": "9–12", "Afternoon": "12–5", "Evening": "5pm+"}
+            filter_msg.append(f"Time: {preferred_time} ({ranges.get(preferred_time, '')})")
+        st.caption(f"Filtered by: {' | '.join(filter_msg)}")
     st.markdown("---")
 
-    day_cols = st.columns(5)
+    day_cols = st.columns(len(days_to_show))
 
-    for col_idx, day in enumerate(WEEKDAYS):
+    for col_idx, day in enumerate(days_to_show):
         date_obj, date_label = week_dates[day]
         with day_cols[col_idx]:
             st.markdown(f"### {day}")
             st.caption(f"**{date_label}**")
 
-            # Collect therapists available this day with open slots
             day_therapists = []
             for _, row in all_matches.iterrows():
                 row_dict = row.to_dict()
@@ -640,8 +743,9 @@ def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame):
                 if not day_modality:
                     continue
                 slots = get_stub_slots(row_dict["therapist"], day)
+                slots = filter_slots_by_time_of_day(slots, preferred_time)
                 if not slots:
-                    continue  # Only show dates with actual availability
+                    continue
                 day_therapists.append({
                     "row": row_dict,
                     "modality": day_modality,
@@ -656,36 +760,24 @@ def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame):
                 t = day_therapists[0]
                 row_dict, day_mod, slots = t["row"], t["modality"], t["slots"]
                 is_near = row_dict.get("miss_count", 0) > 0
-                badge = MODALITY_BADGE.get(day_mod, "")
-                name = row_dict["therapist"].split(",")[0]
-                location = row_dict.get("location", "")
-
-                with st.container(border=True):
-                    label = f"**{name}**"
-                    if is_near:
-                        label += " _(near)_"
-                    st.markdown(label)
-                    loc_str = f" · {location}" if location and day_mod == "In-Person" else ""
-                    st.caption(f"{badge} {day_mod}{loc_str}")
-                    st.caption("  ".join(f"`{s}`" for s in slots))
+                _render_calendar_therapist_card(row_dict, day_mod, slots, is_near)
             else:
-                with st.expander(f"**{len(day_therapists)} therapists** · tap to see times", expanded=False):
+                exact_count = sum(1 for t in day_therapists if t["row"].get("miss_count", 0) == 0)
+                near_count = len(day_therapists) - exact_count
+                summary = f"**{len(day_therapists)} therapists**"
+                if exact_count and near_count:
+                    summary += f" (✓ {exact_count} exact, ~ {near_count} near)"
+                elif exact_count:
+                    summary += f" (✓ {exact_count} exact)"
+                elif near_count:
+                    summary += f" (~ {near_count} near)"
+                with st.expander(summary + " · tap to see times", expanded=False):
                     for i, t in enumerate(day_therapists):
                         if i > 0:
                             st.markdown("---")
                         row_dict, day_mod, slots = t["row"], t["modality"], t["slots"]
                         is_near = row_dict.get("miss_count", 0) > 0
-                        badge = MODALITY_BADGE.get(day_mod, "")
-                        name = row_dict["therapist"].split(",")[0]
-                        location = row_dict.get("location", "")
-
-                        label = f"**{name}**"
-                        if is_near:
-                            label += " _(near)_"
-                        st.markdown(label)
-                        loc_str = f" · {location}" if location and day_mod == "In-Person" else ""
-                        st.caption(f"{badge} {day_mod}{loc_str}")
-                        st.caption("  ".join(f"`{s}`" for s in slots))
+                        _render_calendar_therapist_card(row_dict, day_mod, slots, is_near)
 
 
 # ---------------------------------------------------------------------------
@@ -736,6 +828,7 @@ def main():
 
     criteria = render_sidebar(defaults=defaults)
     exact_matches, near_matches = filter_and_rank(df, criteria)
+    exact_matches, near_matches = filter_by_preferred_schedule(exact_matches, near_matches, criteria)
 
     total = len(df)
     exact_count = len(exact_matches)
@@ -756,9 +849,29 @@ def main():
         filter_tags.append(criteria["location"])
 
     summary = " | ".join(filter_tags) if filter_tags else "No filters applied"
-    st.markdown(
-        f"**{exact_count}** exact match{'es' if exact_count != 1 else ''} "
-        f"+ **{near_count}** near  —  of {total} therapists  ({summary})"
+
+    # Prominent exact match count
+    col_exact, col_near, col_total, _ = st.columns([1, 1, 1, 3])
+    with col_exact:
+        st.metric(
+            "Exact matches",
+            exact_count,
+            help="Therapists matching all selected criteria",
+        )
+    with col_near:
+        st.metric(
+            "Near matches",
+            near_count,
+            help="Therapists matching most criteria (1–2 differences)",
+        )
+    with col_total:
+        st.metric("Total therapists", total)
+    st.caption(f"Filters: {summary}")
+    st.markdown("---")
+
+    st.info(
+        "**Booking flow:** Select a therapist, date, and time below. Your selection will be pushed to "
+        "IntakeQ to complete the booking. (Phase 2 — coming soon)"
     )
     st.markdown("---")
 
@@ -771,17 +884,17 @@ def main():
             st.info("No exact matches. See near-matches below.")
         else:
             for _, row in exact_matches.iterrows():
-                render_therapist_card(row.to_dict())
+                render_therapist_card(row.to_dict(), criteria=criteria)
 
         if not near_matches.empty:
             st.markdown("---")
             st.markdown(f"### Near Matches ({near_count})")
             st.caption("Match most criteria but differ on 1–2 dimensions.")
             for _, row in near_matches.iterrows():
-                render_therapist_card(row.to_dict(), is_near_match=True)
+                render_therapist_card(row.to_dict(), is_near_match=True, criteria=criteria)
 
     with cal_tab:
-        render_calendar_view(exact_matches, near_matches)
+        render_calendar_view(exact_matches, near_matches, criteria)
 
     st.markdown("---")
     with st.expander("Phase 2: Auto-Sync Configuration (Coming Soon)", expanded=False):
