@@ -146,19 +146,19 @@ function createMatcherTab() {
     .setBackground("#dce8f7").setVerticalAlignment("middle");
   sheet.getRange("A10:K10").merge().setBackground("#dce8f7");
 
-  // Column headers for results (row 11)
+  // Column headers — exact order from the actual Therapist List sheet
   const resultHeaders = [
-    ["A", "Therapist",     240],
-    ["B", "Min Age",        65],
-    ["C", "Modality",       90],
-    ["D", "In-Person Days", 130],
-    ["E", "Location",      100],
-    ["F", "Availability",  110],
-    ["G", "Conditions",    220],
-    ["H", "Approaches",    180],
-    ["I", "EMDR",           60],
-    ["J", "Notes",         220],
-    ["K", "Exclusions",    160],
+    ["A", "Therapist",       240],
+    ["B", "Availability",    110],
+    ["C", "Min Age",          65],
+    ["D", "Conditions",      220],
+    ["E", "Approaches",      180],
+    ["F", "Exclusions",      160],
+    ["G", "EMDR",             60],
+    ["H", "Modality",         90],
+    ["I", "In-Person Days",  130],
+    ["J", "Location",        100],
+    ["K", "Notes",           220],
   ];
 
   sheet.setRowHeight(11, 26);
@@ -175,69 +175,51 @@ function createMatcherTab() {
 
   // ─── FILTER FORMULA ────────────────────────────────────────────────────────
   //
-  // Column mapping in "Therapist List":
-  //   A  Therapist     B  Min Age    C  Conditions  D  Approaches   E  Exclusions
-  //   F  EMDR          G  Modality   H  IP Days      I  Location     J  Availability
-  //   K  Notes         N  Str.Med    O  Medicare     P  Fidelis       Q  Healthfirst
-  //   R  NWD           S  BCBS       T  Cigna        U  Optum         V  Aetna
-  //   W  1199
+  // ACTUAL column order in Therapist List (confirmed by user):
+  //   A Therapist      B Availability   C Min Age       D Conditions
+  //   E Approaches     F Exclusions     G EMDR          H Modality
+  //   I In-Person Days J Location       K Notes
+  //   N Str8 Medicaid  O Medicare       P Fidelis       Q Healthfirst
+  //   R NWD            S BCBS           T Cigna         U Optum
+  //   V Aetna          W 1199
   //
-  // Modality logic:
-  //   "In-Person"  → show In-Person AND Hybrid
-  //   "Telehealth" → show Telehealth AND Hybrid
-  //   "Hybrid"     → show Hybrid only
-  //   "Any"        → show all
+  // KEY: All "pass-through" conditions return an ARRAY, never scalar TRUE.
+  //   'Therapist List'!A2:A<>"" is always TRUE for rows with a therapist name.
+  //   FILTER silently errors if any condition is a plain scalar — this avoids that.
   //
-  // FILTER needs all conditions as same-length TRUE/FALSE arrays.
-  // Boolean addition (a)+(b) returns 1 if either is true — truthy in FILTER.
+  // Modality: selecting In-Person or Telehealth also surfaces Hybrid therapists.
+
+  const ANY = `'Therapist List'!A2:A<>""`;  // always-TRUE array for all data rows
 
   const formula = [
-    `=IFERROR(`,
-    `  FILTER(`,
-    `    CHOOSE({1,2,3,4,5,6,7,8,9,10,11},`,
-    `      'Therapist List'!A2:A,`,
-    `      'Therapist List'!B2:B,`,
-    `      'Therapist List'!G2:G,`,
-    `      'Therapist List'!H2:H,`,
-    `      'Therapist List'!I2:I,`,
-    `      'Therapist List'!J2:J,`,
-    `      'Therapist List'!C2:C,`,
-    `      'Therapist List'!D2:D,`,
-    `      'Therapist List'!F2:F,`,
-    `      'Therapist List'!K2:K,`,
-    `      'Therapist List'!E2:E`,
-    `    ),`,
-    // Availability filter
-    `    IF(B8="Available only",'Therapist List'!J2:J="Available",TRUE),`,
-    // Insurance filter (maps dropdown label -> correct column)
-    `    IF(B2="Any",TRUE,`,
-    `      IF(B2="Straight Medicaid",'Therapist List'!N2:N="Yes",`,
-    `      IF(B2="Medicare",'Therapist List'!O2:O="Yes",`,
-    `      IF(B2="Fidelis",'Therapist List'!P2:P="Yes",`,
-    `      IF(B2="Healthfirst",'Therapist List'!Q2:Q="Yes",`,
-    `      IF(B2="NWD",'Therapist List'!R2:R="Yes",`,
-    `      IF(B2="BCBS",'Therapist List'!S2:S="Yes",`,
-    `      IF(B2="Cigna",'Therapist List'!T2:T="Yes",`,
-    `      IF(B2="Optum",'Therapist List'!U2:U="Yes",`,
-    `      IF(B2="Aetna",'Therapist List'!V2:V="Yes",`,
-    `      IF(B2="1199",'Therapist List'!W2:W="Yes",`,
-    `      TRUE))))))))))),`,
-    // Modality filter (Hybrid satisfies both In-Person and Telehealth)
-    `    IF(B3="Any",TRUE,`,
-    `      IF(B3="In-Person",('Therapist List'!G2:G="In-Person")+('Therapist List'!G2:G="Hybrid"),`,
-    `      IF(B3="Telehealth",('Therapist List'!G2:G="Telehealth")+('Therapist List'!G2:G="Hybrid"),`,
-    `      'Therapist List'!G2:G=B3))),`,
-    // Location filter (SEARCH handles "Commack, Jericho" multi-location cells)
-    `    IF(B4="Any",TRUE,ISNUMBER(SEARCH(B4,'Therapist List'!I2:I))),`,
-    // Age filter (0 = skip; therapists with no min age (0) always pass)
-    `    IF(B5=0,TRUE,('Therapist List'!B2:B=0)+('Therapist List'!B2:B<=B5)),`,
-    // Condition keyword (searches both Conditions and Approaches columns)
-    `    IF(B6="",TRUE,ISNUMBER(SEARCH(LOWER(B6),LOWER('Therapist List'!C2:C)&" "&LOWER('Therapist List'!D2:D)))),`,
-    // EMDR filter
-    `    IF(B7="Any",TRUE,'Therapist List'!F2:F="Yes")`,
-    `  ),`,
-    `  "— No matches. Try setting some filters to Any —"`,
-    `)`,
+    `=IFERROR(FILTER('Therapist List'!A2:K,`,
+    // 1. Availability — col B
+    `IF(B8="Available only",'Therapist List'!B2:B="Available",${ANY}),`,
+    // 2. Insurance — cols N–W (unchanged)
+    `IF(B2="Any",${ANY},IF(B2="Straight Medicaid",'Therapist List'!N2:N="Yes",`,
+    `IF(B2="Medicare",'Therapist List'!O2:O="Yes",`,
+    `IF(B2="Fidelis",'Therapist List'!P2:P="Yes",`,
+    `IF(B2="Healthfirst",'Therapist List'!Q2:Q="Yes",`,
+    `IF(B2="NWD",'Therapist List'!R2:R="Yes",`,
+    `IF(B2="BCBS",'Therapist List'!S2:S="Yes",`,
+    `IF(B2="Cigna",'Therapist List'!T2:T="Yes",`,
+    `IF(B2="Optum",'Therapist List'!U2:U="Yes",`,
+    `IF(B2="Aetna",'Therapist List'!V2:V="Yes",`,
+    `IF(B2="1199",'Therapist List'!W2:W="Yes",${ANY}))))))))))),`,
+    // 3. Modality — col H (In-Person/Telehealth also match Hybrid)
+    `IF(B3="Any",${ANY},`,
+    `IF(B3="In-Person",('Therapist List'!H2:H="In-Person")+('Therapist List'!H2:H="Hybrid"),`,
+    `IF(B3="Telehealth",('Therapist List'!H2:H="Telehealth")+('Therapist List'!H2:H="Hybrid"),`,
+    `'Therapist List'!H2:H=B3))),`,
+    // 4. Location — col J (SEARCH handles "Commack, Jericho" multi-value cells)
+    `IF(B4="Any",${ANY},ISNUMBER(SEARCH(B4,'Therapist List'!J2:J))),`,
+    // 5. Age — col C (0 = skip filter; therapists with min_age blank/0 always pass)
+    `IF(B5=0,${ANY},('Therapist List'!C2:C=0)+('Therapist List'!C2:C<=B5)),`,
+    // 6. Condition keyword — searches cols D (Conditions) + E (Approaches)
+    `IF(B6="",${ANY},ISNUMBER(SEARCH(LOWER(B6),LOWER('Therapist List'!D2:D)&" "&LOWER('Therapist List'!E2:E)))),`,
+    // 7. EMDR — col G
+    `IF(B7="Any",${ANY},'Therapist List'!G2:G="Yes")`,
+    `),"— No matches. Try setting some filters to Any —")`,
   ].join(" ");
 
   sheet.getRange("A12").setFormula(formula);
