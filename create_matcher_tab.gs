@@ -238,9 +238,16 @@ function createMatcherTab() {
     `  ),`,
     `  "— No matches. Try setting some filters to Any —"`,
     `)`,
-  ].join("\n");
+  ].join(" ");
 
   sheet.getRange("A12").setFormula(formula);
+
+  // ── Diagnostic cell: confirm data sheet is readable ──
+  // Shows therapist count in H9 so you can verify the reference is live
+  sheet.getRange("H9")
+    .setFormula(`=COUNTA('Therapist List'!A2:A)&" therapists loaded"`)
+    .setFontSize(9).setFontColor("#888888").setHorizontalAlignment("right");
+  sheet.getRange("H9:K9").merge();
 
   // Alternating row shading — batched into a single API call (much faster)
   const numResultRows = 49;
