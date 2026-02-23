@@ -7,6 +7,7 @@ Phase 2: real-time IntakeQ availability.
 
 import hashlib
 import re
+from datetime import datetime, timedelta
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -134,6 +135,24 @@ def get_all_stub_slots(row: dict) -> dict:
         slots = get_stub_slots(row["therapist"], day)
         if slots:
             result[day] = (day_modality, slots)
+    return result
+
+
+def get_week_dates(week_offset: int = 0) -> dict:
+    """
+    Returns {day_name: (date_obj, date_label)} for the Mon–Fri of a given week.
+    week_offset=0 is the upcoming week starting next Monday (or today if today is Mon–Fri).
+    week_offset=1 is the following week, etc.
+    """
+    today = datetime.now().date()
+    # weekday(): Mon=0 .. Sun=6
+    days_since_monday = today.weekday()
+    monday = today - timedelta(days=days_since_monday)
+    week_start = monday + timedelta(weeks=week_offset)
+    result = {}
+    for i, day in enumerate(WEEKDAYS):
+        d = week_start + timedelta(days=i)
+        result[day] = (d, d.strftime("%b %d"))
     return result
 
 
@@ -573,15 +592,33 @@ def render_therapist_card(row: dict, is_near_match: bool = False):
 
 def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame):
     """
-    Weekly calendar — 5 columns (Mon–Fri).
-    Each column shows matched therapists available that day with modality + stub slots.
-    Exact matches shown normally; near-matches labeled.
+    Weekly calendar — 5 columns (Mon–Fri) with exact dates.
+    Each column shows matched therapists available that date with modality + stub slots.
+    When multiple therapists are available on a date, users can drill into each therapist's times.
+    Filter criteria update which therapists appear; calendar reflects filtered results.
     """
     all_matches = pd.concat([exact_df, near_df], ignore_index=True) if not near_df.empty else exact_df
 
     if all_matches.empty:
-        st.info("No matches to display. Adjust filters.")
+        st.info("No matches to display. Adjust filters in the sidebar.")
         return
+
+    def week_label(i):
+        wd = get_week_dates(i)
+        mon_date = wd["Mon"][1]  # e.g. "Feb 24"
+        if i == 0:
+            return f"This week (starting {mon_date})"
+        if i == 1:
+            return f"Next week (starting {mon_date})"
+        return f"Week of {mon_date}"
+
+    week_idx = st.selectbox(
+        "Week",
+        range(4),
+        format_func=week_label,
+        key="calendar_week",
+    )
+    week_dates = get_week_dates(week_idx)
 
     st.caption("Open slots are stub data — Phase 2 will pull live from IntakeQ.")
     st.markdown("---")
@@ -589,21 +626,37 @@ def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame):
     day_cols = st.columns(5)
 
     for col_idx, day in enumerate(WEEKDAYS):
+        date_obj, date_label = week_dates[day]
         with day_cols[col_idx]:
             st.markdown(f"### {day}")
+            st.caption(f"**{date_label}**")
 
-            any_shown = False
+            # Collect therapists available this day with open slots
+            day_therapists = []
             for _, row in all_matches.iterrows():
                 row_dict = row.to_dict()
                 schedule = get_therapist_schedule(row_dict)
                 day_modality = schedule.get(day)
-
                 if not day_modality:
                     continue
-
                 slots = get_stub_slots(row_dict["therapist"], day)
+                if not slots:
+                    continue  # Only show dates with actual availability
+                day_therapists.append({
+                    "row": row_dict,
+                    "modality": day_modality,
+                    "slots": slots,
+                })
+
+            if not day_therapists:
+                st.caption("_No availability_")
+                continue
+
+            if len(day_therapists) == 1:
+                t = day_therapists[0]
+                row_dict, day_mod, slots = t["row"], t["modality"], t["slots"]
                 is_near = row_dict.get("miss_count", 0) > 0
-                badge = MODALITY_BADGE.get(day_modality, "")
+                badge = MODALITY_BADGE.get(day_mod, "")
                 name = row_dict["therapist"].split(",")[0]
                 location = row_dict.get("location", "")
 
@@ -612,19 +665,27 @@ def render_calendar_view(exact_df: pd.DataFrame, near_df: pd.DataFrame):
                     if is_near:
                         label += " _(near)_"
                     st.markdown(label)
+                    loc_str = f" · {location}" if location and day_mod == "In-Person" else ""
+                    st.caption(f"{badge} {day_mod}{loc_str}")
+                    st.caption("  ".join(f"`{s}`" for s in slots))
+            else:
+                with st.expander(f"**{len(day_therapists)} therapists** · tap to see times", expanded=False):
+                    for i, t in enumerate(day_therapists):
+                        if i > 0:
+                            st.markdown("---")
+                        row_dict, day_mod, slots = t["row"], t["modality"], t["slots"]
+                        is_near = row_dict.get("miss_count", 0) > 0
+                        badge = MODALITY_BADGE.get(day_mod, "")
+                        name = row_dict["therapist"].split(",")[0]
+                        location = row_dict.get("location", "")
 
-                    loc_str = f" · {location}" if location and day_modality == "In-Person" else ""
-                    st.caption(f"{badge} {day_modality}{loc_str}")
-
-                    if slots:
+                        label = f"**{name}**"
+                        if is_near:
+                            label += " _(near)_"
+                        st.markdown(label)
+                        loc_str = f" · {location}" if location and day_mod == "In-Person" else ""
+                        st.caption(f"{badge} {day_mod}{loc_str}")
                         st.caption("  ".join(f"`{s}`" for s in slots))
-                    else:
-                        st.caption("_No open slots_")
-
-                any_shown = True
-
-            if not any_shown:
-                st.caption("_No matches_")
 
 
 # ---------------------------------------------------------------------------
